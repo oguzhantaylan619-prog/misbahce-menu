@@ -52,6 +52,7 @@ async function main() {
   const cats = readJson(path.join(SRC, 'menu.json'), []);
   const hasLogo = fs.existsSync(path.join(IMGDIR, 'misbahce-logo.png'));
 
+  const extra = readJson(path.join(OUT, 'extra-images.json'), {}); // internetten eklenen (Openverse) yerel gorseller
   const sections = [];
   const urls = new Set();
   for (const cat of cats) {
@@ -61,19 +62,21 @@ async function main() {
     for (const p of prods) {
       const k = norm(p.name); if (seen.has(k)) continue; seen.add(k);
       const price = (p.store_price != null ? p.store_price : p.price) || 0;
-      const pic = realPhoto(p.picture) ? p.picture : null; if (pic) urls.add(pic);
-      items.push({ name: titleTr(p.name), desc: (p.description || '').trim(), price, picture: pic });
+      const remote = realPhoto(p.picture) ? p.picture : null; if (remote) urls.add(remote);
+      const localExtra = extra[cat.name.trim() + ' / ' + p.name.trim()] || extra[titleTr(cat.name) + ' / ' + titleTr(p.name)] || null;
+      items.push({ name: titleTr(p.name), desc: (p.description || '').trim(), price, remote, localExtra });
     }
     if (!items.length) continue;
-    // kategori kapak gorseli: o kategorideki ilk GERCEK urun fotografi (sepettakip'in generic
-    // karanlik "MISBAHCE" kategori gorselleri kullanilmaz — istah acici olsun). Yoksa renkli harf-kart.
-    const f = items.find(it => it.picture); let cover = f ? f.picture : null;
-    if (cover) urls.add(cover);
-    sections.push({ name: titleTr(cat.name), items, cover });
+    sections.push({ name: titleTr(cat.name), items });
   }
 
   console.log('Gorseller indiriliyor...');
   const imgMap = await ensureImages(urls);
+  // gorsel yolu: uzaktan indirilen (sepettakip) VEYA extra (internetten eklenen) yerel dosya. Kapak = ilk gorselli urun.
+  sections.forEach(s => {
+    s.items.forEach(it => { it.img = it.remote ? imgMap[it.remote] : it.localExtra; });
+    const f = s.items.find(it => it.img); s.coverImg = f ? f.img : null;
+  });
 
   const totalItems = sections.reduce((s, x) => s + x.items.length, 0);
   const totalCats = sections.length;
@@ -81,7 +84,7 @@ async function main() {
   // KATEGORI IZGARASI
   const grid = sections.map((s, i) => {
     const acc = ACCENTS[i % ACCENTS.length];
-    const cov = s.cover ? imgMap[s.cover] : null;
+    const cov = s.coverImg;
     const inner = cov
       ? `<img src="${esc(cov)}" alt="${esc(s.name)}" loading="${i < 6 ? 'eager' : 'lazy'}" decoding="async"><div class="ov"></div>`
       : `<div class="ov solid"></div><div class="mono">${esc(s.name.trim()[0] || 'M')}</div>`;
@@ -94,7 +97,7 @@ async function main() {
   const secHtml = sections.map((s, i) => {
     const acc = ACCENTS[i % ACCENTS.length];
     const cards = s.items.map(it => {
-      const local = it.picture ? imgMap[it.picture] : null;
+      const local = it.img;
       const letter = esc((it.name.trim()[0] || 'M').toLocaleUpperCase('tr-TR'));
       let media;
       if (local) { const eager = imgSeen < 4; imgSeen++; media = `<img class="thumb" src="${esc(local)}" alt="${esc(it.name)}" width="200" height="200" ${eager ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async" onerror="this.replaceWith(ph('${acc}','${letter}'))">`; }
