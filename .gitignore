@@ -1,2 +1,5 @@
 *.tmp
 img/*.tmp
+brand/
+_*
+node_modules/
